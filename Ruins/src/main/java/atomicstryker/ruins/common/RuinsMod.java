@@ -22,6 +22,7 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.CommandBlockEntity;
+import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.entity.EntityEvent;
@@ -268,7 +269,9 @@ public class RuinsMod {
 
     @SubscribeEvent
     public static void onEntityEnteringChunk(EntityEvent.EnteringSection event) {
-        if (event.getEntity() instanceof Player && !event.getEntity().level().isClientSide()) {
+        // EnteringSection also fires on every vertical 16-block section change; the scan only
+        // depends on the chunk column, so only run it when that changed
+        if (event.getEntity() instanceof Player && !event.getEntity().level().isClientSide() && event.didChunkChange()) {
             getInstance().executeCommandBlockLogic(event.getEntity(), event.getNewPos());
         }
     }
@@ -283,8 +286,12 @@ public class RuinsMod {
 
         for (int xoffset = -4; xoffset <= 4; xoffset++) {
             for (int zoffset = -4; zoffset <= 4; zoffset++) {
-                if (entity.level().hasChunk(newPos.x() + xoffset, newPos.z() + zoffset)) {
-                    for (BlockEntity teo : entity.level().getChunk(newPos.x() + xoffset, newPos.z() + zoffset).getBlockEntities().values()) {
+                // getChunkNow only returns chunks that are already fully loaded (null otherwise).
+                // hasChunk is also true for chunks that are only scheduled to load, and getChunk then
+                // blocks the server thread until that chunk finishes generating, causing lag spikes.
+                LevelChunk chunk = entity.level().getChunkSource().getChunkNow(newPos.x() + xoffset, newPos.z() + zoffset);
+                if (chunk != null) {
+                    for (BlockEntity teo : chunk.getBlockEntities().values()) {
                         if (teo instanceof CommandBlockEntity) {
                             tecb = (CommandBlockEntity) teo;
                             if (tecb.getCommandBlock().getCommand().startsWith("RUINSTRIGGER ")) {
